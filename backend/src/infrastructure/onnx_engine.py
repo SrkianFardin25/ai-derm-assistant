@@ -1,6 +1,7 @@
 """ONNX Runtime inference engine with dynamic HuggingFace Hub streaming."""
 
 import os
+import hashlib
 from typing import Optional, Tuple
 import numpy as np
 from PIL import Image
@@ -68,6 +69,7 @@ class ONNXInferenceEngine:
         self.output_name = "output"
         self.model_path = model_path
         self.calibration_temperature: Optional[float] = None
+        self.head_version = "base-head"
         self._initialize_session(model_path, hf_repo_id)
 
     def _initialize_session(self, model_path: Optional[str], hf_repo_id: Optional[str]) -> None:
@@ -115,6 +117,10 @@ class ONNXInferenceEngine:
             outputs = [o.name for o in self.session.get_outputs()]
             self.head = _load_head(resolved_path) if "features" in outputs else None
             self.calibration_temperature = _load_head_temperature(resolved_path)
+            head_path = os.path.join(os.path.dirname(resolved_path), "head_v2.json")
+            if os.path.exists(head_path):
+                with open(head_path, "rb") as handle:
+                    self.head_version = hashlib.sha256(handle.read()).hexdigest()[:16]
 
     head = None
 
@@ -142,7 +148,10 @@ class ONNXInferenceEngine:
         # Average original and horizontally flipped views so predictions are
         # less sensitive to lesion orientation and asymmetric lighting.
         flipped_tensor = np.ascontiguousarray(tensor[:, :, :, ::-1])
-        logits = (self._logits(tensor) + self._logits(flipped_tensor)) / 2.0
+        # Limited TTA: the original plus horizontal and vertical flips. Keep
+        # the set bounded so latency remains predictable on CPU deployments.
+        vertical_tensor = np.ascontiguousarray(tensor[:, :, ::-1, :])
+        logits = (self._logits(tensor) + self._logits(flipped_tensor) + self._logits(vertical_tensor)) / 3.0
 
         # Softmax of baseline
         exp_logits = np.exp(logits - np.max(logits))

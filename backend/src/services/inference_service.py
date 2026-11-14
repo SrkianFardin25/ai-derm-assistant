@@ -81,6 +81,16 @@ class InferenceService:
             abstention_reasons.append("the leading lesion classes are too close to separate reliably")
         if normalized_uncertainty > self.MAX_ACTIONABLE_UNCERTAINTY:
             abstention_reasons.append("the model output is highly uncertain")
+
+        # Routing is deliberately stricter than simply displaying the top
+        # class: malignant classes always require clinician review, while
+        # uncertain outputs are never routed as green/actionable.
+        if top_prob.risk_level.value == "MALIGNANT" or abstention_reasons:
+            routing_zone = "red"
+        elif top_prob.probability < 0.75 or margin < 0.20 or normalized_uncertainty > 0.55:
+            routing_zone = "yellow"
+        else:
+            routing_zone = "green"
         
         # 6. Generate occlusion-sensitivity explainability heatmap overlay
         rgb_array = np.array(image.convert("RGB"), dtype=np.uint8)
@@ -100,6 +110,8 @@ class InferenceService:
             probabilities=class_prob_list,
             is_actionable=not abstention_reasons,
             abstention_reason="; ".join(abstention_reasons) if abstention_reasons else None,
+            routing_zone=routing_zone,
+            inference_ms=(time.perf_counter() - start_time) * 1000.0,
             saliency_heatmap_bytes=heatmap_png,
             clinical_summary=None,
             gemini_summary=None

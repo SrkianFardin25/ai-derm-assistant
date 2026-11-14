@@ -124,3 +124,12 @@ Every task follows a strict 4-step atomic verification cycle:
 - [x] **5.3 Real Live Backend Verification Gate** → verified: `scratch/test_live_backend.py` with real lesion image (Exit Code 0)
 - [x] **5.4 Production API Root Manifest Gate** → verified: GET / manifest - [x] **5.4 Production Hardening Gate (SQLite WAL, EXIF, Groq Fallback)** → verified: `data/dermassist.db` - [x] **5.3 Real Live Backend Verification Gate** → verified: `scratch/test_live_backend.py` with real lesion image (Exit Code 0) live Groq LPU (Exit Code 0) 19 passing tests (Exit Code 0)
 - [x] **5.6 Live Production Deployment on Render** → verified: https://ai-derm-assistant-api.onrender.com/health (ONNX, Groq, Supabase operational, Exit Code 0)
+
+
+## 2026-11-14 Safety and Robustness Batch
+- Implemented conservative image-quality gating (minimum dimensions, Laplacian sharpness, contrast) with structured 422 responses for unusable uploads.
+- Added three-zone routing (`green`, `yellow`, `red`), bounded original/horizontal/vertical flip TTA, and measured `inference_ms` metadata. Malignant and abstained outputs are never treated as green/actionable.
+- Added malignant-result acknowledgment UI, model/head/image audit metadata, additive Supabase migration fields, and longitudinal class/risk/confidence change detection with dermatologist-review messaging.
+- Added feedback submission and in-process aggregation endpoints with class-pair counts plus frontend controls.
+- Verification: `python3 -m compileall -q backend/src` passed; `PYTHONPATH=backend pytest backend/tests -q` passed 21 tests; `cd frontend && npm run build` passed; `npm run lint` passed with 0 errors and 10 pre-existing warnings; `git diff --check` passed.
+- Known limitation: feedback aggregation is process-local until a durable feedback table/RLS policy is deployed; the existing seven-class taxonomy is unchanged; no new validated temperature value was claimed.

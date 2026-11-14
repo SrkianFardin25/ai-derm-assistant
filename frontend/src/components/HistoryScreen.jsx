@@ -418,6 +418,19 @@ export default function HistoryScreen({ onStartScan, addToast }) {
 
                         {lesion.visits.length >= 2 && <RiskChart visits={lesion.visits} />}
 
+                        {lesion.visits[0]?.change_detected && (
+                          <Alert variant="warning">
+                            <AlertTriangle className="w-4 h-4" />
+                            <AlertTitle>Change detected since the previous scan</AlertTitle>
+                            <AlertDescription>
+                              {Array.isArray(lesion.visits[0].change_reasons) && lesion.visits[0].change_reasons.length
+                                ? lesion.visits[0].change_reasons.join("; ") + ". "
+                                : "The latest screening result differs from the previous visit. "}
+                              Please have the lesion reviewed by a dermatologist rather than relying on the trend alone.
+                            </AlertDescription>
+                          </Alert>
+                        )}
+
                         <div>
                           <p className="text-xs font-semibold text-slate-800 mb-3">Scan timeline</p>
                           <ol>

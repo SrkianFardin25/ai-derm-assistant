@@ -5,6 +5,7 @@ from src.infrastructure.supabase_client import SupabaseCloudClient
 from src.services.groq_service import GroqService
 from src.services.history_service import HistoryService
 from src.services.inference_service import InferenceService
+from src.services.feedback_service import FeedbackService
 
 
 @lru_cache()
@@ -32,6 +33,11 @@ def get_history_service() -> HistoryService:
     settings = get_settings()
     repo = SupabaseCloudClient(url=settings.SUPABASE_URL, key=settings.SUPABASE_KEY)
     return HistoryService(client=repo)
+
+
+@lru_cache()
+def get_feedback_service() -> FeedbackService:
+    return FeedbackService()
 
 from src.services.report_service import ReportService
 

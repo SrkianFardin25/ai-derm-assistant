@@ -15,6 +15,7 @@ from src.api.dependencies import (
     get_history_service,
     get_inference_service,
     get_report_service,
+    get_feedback_service,
 )
 from src.api.schemas import (
     ClassProbabilityResponse,
@@ -29,6 +30,8 @@ from src.api.schemas import (
     PDFReportRequest,
     PDFReportResponse,
     PredictionResponse,
+    FeedbackRequest,
+    FeedbackResponse,
 )
 from src.domain.models import (
     FeedbackType,
@@ -45,6 +48,8 @@ from src.services.groq_service import GroqService
 from src.services.history_service import HistoryService
 from src.services.inference_service import InferenceService
 from src.services.report_service import ReportService
+from src.services.feedback_service import FeedbackService
+from src.services.quality_service import assess_image_quality
 
 MAX_IMAGE_SIDE = 1024
 
@@ -131,6 +136,18 @@ async def predict_lesion(
             detail=f"Failed to decode image: {str(exc)}",
         )
 
+    quality = assess_image_quality(image)
+    if not quality.acceptable:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "IMAGE_QUALITY_INSUFFICIENT",
+                "message": quality.reason,
+                "sharpness": quality.sharpness,
+                "contrast": quality.contrast,
+            },
+        )
+
     try:
         prediction = await run_in_threadpool(inference_service.predict, image)
     except Exception as exc:
@@ -145,6 +162,8 @@ async def predict_lesion(
         # Do not let an abstained result appear benign because its top class
         # happened to be a benign category.
         v2_risk_level, v2_risk_label = "yellow", "Monitor"
+    if prediction.routing_zone == "red" and prediction.risk_level.value == "MALIGNANT":
+        v2_risk_level, v2_risk_label = "red", "See doctor urgently"
     v2_uncertainty = categorize_uncertainty(prediction.uncertainty_score)
     probs_by_code = {p.code: float(p.probability) for p in prediction.probabilities}
     all_probs = [probs_by_code.get(c, 0.0) for c in CLASS_NAMES]
@@ -172,9 +191,10 @@ async def predict_lesion(
         heatmap_b64 = base64.b64encode(prediction.saliency_heatmap_bytes).decode("utf-8")
 
     # 4. Optional cloud persistence
+    saved_record = None
     if save_to_cloud:
         try:
-            await run_in_threadpool(
+            saved_record = await run_in_threadpool(
                 history_service.record_scan,
                 prediction=prediction,
                 image_bytes=contents,
@@ -182,6 +202,8 @@ async def predict_lesion(
             )
         except Exception as exc:
             logger.warning(f"Cloud persistence failed (non-fatal): {exc}")
+    else:
+        saved_record = None
 
     probs_response = [
         ClassProbabilityResponse(
@@ -206,6 +228,9 @@ async def predict_lesion(
         llm_explanation=clinical_summary,
         is_actionable=prediction.is_actionable,
         abstention_reason=prediction.abstention_reason,
+        routing_zone=prediction.routing_zone,
+        scan_id=saved_record.id if saved_record else None,
+        quality={"acceptable": quality.acceptable, "sharpness": quality.sharpness, "contrast": quality.contrast},
         # Backward-compatible v1.0 Fields
         top_class=prediction.top_class,
         top_name=prediction.top_name,
@@ -217,6 +242,23 @@ async def predict_lesion(
         saliency_heatmap_base64=heatmap_b64,
         clinical_summary=clinical_summary,
     )
+
+
+@router.post("/feedback", response_model=FeedbackResponse, tags=["Monitoring"])
+@router.post("/api/v1/feedback", response_model=FeedbackResponse, tags=["Monitoring"])
+def submit_feedback(
+    payload: FeedbackRequest,
+    feedback_service: FeedbackService = Depends(get_feedback_service),
+):
+    try:
+        return feedback_service.record(payload.feedback, payload.predicted_class, payload.corrected_class)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.get("/feedback/summary", response_model=FeedbackResponse, tags=["Monitoring"])
+def feedback_summary(feedback_service: FeedbackService = Depends(get_feedback_service)):
+    return feedback_service.summary()
 
 
 @router.post("/report", response_model=PDFReportResponse, tags=["Reports"])

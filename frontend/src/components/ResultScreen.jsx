@@ -31,6 +31,8 @@ export default function ResultScreen({
   addToast
 }) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [malignantAcknowledged, setMalignantAcknowledged] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
 
   if (!prediction) {
     return (
@@ -48,6 +50,7 @@ export default function ResultScreen({
 
   const confidencePercent = (prediction.confidence * 100);
   const isAbstained = prediction.is_actionable === false;
+  const requiresAcknowledgment = prediction.risk_level === "red" || prediction.routing_zone === "red";
   const CLASS_LABELS = [
     "Actinic Keratosis", "Basal Cell Carcinoma", "Benign Keratosis", "Dermatofibroma",
     "Melanoma", "Melanocytic Nevus (Mole)", "Vascular Lesion",
@@ -134,6 +137,20 @@ export default function ResultScreen({
     }
   };
 
+  const sendFeedback = async (feedback) => {
+    try {
+      await fetch(`${API_BASE_URL}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback, predicted_class: prediction.predicted_class || prediction.top_class }),
+      });
+      setFeedbackSent(true);
+      addToast?.({ type: "success", title: "Feedback recorded", message: "Thank you — this helps monitor the model." });
+    } catch {
+      addToast?.({ type: "error", title: "Feedback unavailable", message: "Your result is still available." });
+    }
+  };
+
   return (
     <div className="pt-32 pb-20 px-4 max-w-5xl mx-auto space-y-8">
       {/* Top Controls Header */}
@@ -182,6 +199,21 @@ export default function ResultScreen({
         </Alert>
       )}
 
+      {requiresAcknowledgment && (
+        <Alert variant="warning">
+          <AlertTriangle className="w-4 h-4" />
+          <AlertTitle>Dermatologist review is required</AlertTitle>
+          <AlertDescription>
+            This screening result may indicate a high-risk lesion. It is not a diagnosis and cannot confirm or exclude cancer.
+            Please arrange prompt in-person evaluation and do not delay care because of this app.
+            <label className="flex items-center gap-2 mt-3 font-medium text-slate-800">
+              <input type="checkbox" checked={malignantAcknowledged} onChange={(e) => setMalignantAcknowledged(e.target.checked)} />
+              I understand this result requires clinical confirmation.
+            </label>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Main Grid: Visualizer & Result Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Compare Slider (6 cols) */}
@@ -209,7 +241,7 @@ export default function ResultScreen({
                   Primary Classification
                 </p>
                 <h3 className="text-2xl sm:text-3xl font-bold font-heading text-slate-900 mt-0.5">
-                  {isAbstained ? "Inconclusive — dermatologist review needed" : prediction.class_name}
+                  {!malignantAcknowledged && requiresAcknowledgment ? "High-risk result — review required" : isAbstained ? "Inconclusive — dermatologist review needed" : prediction.class_name}
                 </h3>
               </div>
 
@@ -222,7 +254,7 @@ export default function ResultScreen({
               <div className="flex items-center justify-between text-xs font-medium">
                 <span className="text-slate-600">Calibrated Confidence:</span>
                 <span className="font-mono text-base font-bold text-slate-900">
-                  <CountUp value={confidencePercent} />
+                  {requiresAcknowledgment && !malignantAcknowledged ? "Acknowledgment required" : <CountUp value={confidencePercent} />}
                 </span>
               </div>
               <Progress
@@ -244,6 +276,17 @@ export default function ResultScreen({
               </span>
             </div>
           </SpotlightCard>
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-5">
+            <p className="text-xs font-semibold text-slate-800 mb-3">Was this screening result useful?</p>
+            {feedbackSent ? <p className="text-xs text-emerald-700">Feedback recorded. Thank you.</p> : (
+              <div className="flex flex-wrap gap-2">
+                {[["CORRECT", "Looks right"], ["INCORRECT", "Looks wrong"], ["UNCERTAIN", "Not sure"]].map(([value, label]) => (
+                  <button key={value} onClick={() => sendFeedback(value)} className="px-3 py-2 rounded-full border border-slate-200 text-xs font-semibold hover:bg-emerald-50">{label}</button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* AI Clinical Advisory Narrative Card */}
           <div className="bg-white rounded-3xl p-6 border border-emerald-500/20 shadow-sm space-y-3">

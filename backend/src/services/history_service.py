@@ -1,7 +1,10 @@
 """History Service managing Supabase Cloud scans persistence and media storage."""
 
 import threading
+import hashlib
+import os
 from typing import Any, Dict, List, Optional
+from src.core.config import get_settings
 from src.domain.models import PredictionResult, ScanRecord
 from src.infrastructure.supabase_client import SupabaseCloudClient
 
@@ -21,6 +24,11 @@ class HistoryService:
         heatmap_bytes: Optional[bytes] = None
     ) -> ScanRecord:
         """Upload media to Supabase storage and persist scan record in PostgreSQL."""
+        head_path = os.path.join(os.path.dirname(__file__), "..", "..", "checkpoints", "head_v2.json")
+        head_version = "base-head"
+        if os.path.exists(head_path):
+            with open(head_path, "rb") as handle:
+                head_version = hashlib.sha256(handle.read()).hexdigest()[:16]
         record = ScanRecord(
             predicted_class=prediction.top_class,
             raw_confidence=prediction.raw_confidence,
@@ -29,7 +37,12 @@ class HistoryService:
             uncertainty_score=prediction.uncertainty_score,
             risk_level=prediction.risk_level.value,
             clinical_summary=prediction.clinical_summary or prediction.gemini_summary,
-            gemini_summary=prediction.clinical_summary or prediction.gemini_summary
+            gemini_summary=prediction.clinical_summary or prediction.gemini_summary,
+            image_sha256=hashlib.sha256(image_bytes).hexdigest(),
+            model_version=get_settings().MODEL_VERSION,
+            head_version=head_version,
+            routing_zone=prediction.routing_zone,
+            inference_ms=prediction.inference_ms,
         )
 
         # 1. Upload original lesion image to Supabase Storage
@@ -64,6 +77,11 @@ class HistoryService:
             "risk_level": record.risk_level,
             "gemini_summary": record.gemini_summary,
             "feedback": record.feedback,
+            "image_sha256": record.image_sha256,
+            "model_version": record.model_version,
+            "head_version": record.head_version,
+            "routing_zone": record.routing_zone,
+            "inference_ms": record.inference_ms,
             "created_at": record.created_at
         }
         self.client.insert_scan(payload)
@@ -87,6 +105,11 @@ class HistoryService:
                     risk_level=r.get("risk_level", "BENIGN"),
                     gemini_summary=r.get("gemini_summary"),
                     feedback=r.get("feedback"),
+                    image_sha256=r.get("image_sha256"),
+                    model_version=r.get("model_version", "unknown"),
+                    head_version=r.get("head_version", "unknown"),
+                    routing_zone=r.get("routing_zone", "yellow"),
+                    inference_ms=float(r.get("inference_ms", 0.0)),
                     created_at=r.get("created_at", "")
                 )
             )
@@ -124,13 +147,25 @@ class HistoryService:
             "notes": notes
         }
         
-        if lesion_id not in self._lesion_store:
-            self._lesion_store[lesion_id] = {
+        with self._store_lock:
+            previous = self._lesion_store.get(lesion_id, {}).get("visits", [])
+            if previous:
+                prior = previous[0]
+                reasons = []
+                if prior.get("predicted_class") != visit_row["predicted_class"]:
+                    reasons.append("predicted lesion class changed")
+                if {"red": 2, "yellow": 1, "green": 0}.get(visit_row["risk_level"], 0) > {"red": 2, "yellow": 1, "green": 0}.get(prior.get("risk_level"), 0):
+                    reasons.append("risk level increased")
+                if abs(visit_row["confidence"] - float(prior.get("confidence", 0))) >= 0.20:
+                    reasons.append("confidence changed substantially")
+                visit_row["change_detected"] = bool(reasons)
+                visit_row["change_reasons"] = reasons
+            if lesion_id not in self._lesion_store:
+                self._lesion_store[lesion_id] = {
                 "lesion_id": lesion_id,
                 "lesion_name": lesion_name,
                 "visits": []
-            }
-        with self._store_lock:
+                }
             self._lesion_store[lesion_id]["visits"].insert(0, visit_row)
         self.client.insert_lesion_visit(visit_row)
         return {"visit_id": visit_id, "lesion_id": lesion_id}

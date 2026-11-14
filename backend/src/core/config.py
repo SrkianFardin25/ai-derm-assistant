@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # take precedence in dependency wiring.
     DEFAULT_TEMPERATURE: float = 1.35
     INPUT_SIZE: int = 380  # EfficientNet-B4 native resolution
+    MODEL_VERSION: str = "efficientnet-b4-ham10000-v2"
     
     # Groq LPU Clinical Narrative
     GROQ_API_KEY: Optional[str] = None

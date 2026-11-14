@@ -103,6 +103,8 @@ class PredictionResult:
     probabilities: List[ClassProbability]
     is_actionable: bool = True
     abstention_reason: Optional[str] = None
+    routing_zone: str = "yellow"
+    inference_ms: float = 0.0
     saliency_heatmap_bytes: Optional[bytes] = None
     clinical_summary: Optional[str] = None
     gemini_summary: Optional[str] = None
@@ -122,6 +124,11 @@ class ScanRecord:
     clinical_summary: Optional[str] = None
     gemini_summary: Optional[str] = None
     feedback: Optional[str] = None
+    image_sha256: Optional[str] = None
+    model_version: str = "unknown"
+    head_version: str = "unknown"
+    routing_zone: str = "yellow"
+    inference_ms: float = 0.0
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 def map_risk_tier(class_code: str) -> tuple[str, str]:

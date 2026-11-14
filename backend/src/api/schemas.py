@@ -22,6 +22,9 @@ class PredictionResponse(BaseModel):
     llm_explanation: Optional[str] = None
     is_actionable: bool = True
     abstention_reason: Optional[str] = None
+    routing_zone: str = "yellow"
+    scan_id: Optional[str] = None
+    quality: Optional[Dict[str, Any]] = None
 
     # Backward-compatible v1.0 Fields
     top_class: Optional[str] = None
@@ -57,6 +60,18 @@ class HealthResponse(BaseModel):
     timestamp: str
 
 
+class FeedbackRequest(BaseModel):
+    feedback: str
+    predicted_class: str
+    corrected_class: Optional[str] = None
+
+
+class FeedbackResponse(BaseModel):
+    counts: Dict[str, int]
+    incorrect_class_pairs: Dict[str, int]
+    total: int
+
+
 class PDFReportRequest(BaseModel):
     prediction: Dict[str, Any]
     history: Optional[List[Dict[str, Any]]] = None
@@ -88,6 +103,8 @@ class LesionVisitItem(BaseModel):
     risk_label: str
     image_thumb: Optional[str] = None
     llm_explanation: Optional[str] = None
+    change_detected: bool = False
+    change_reasons: List[str] = Field(default_factory=list)
 
 
 class LesionHistoryResponse(BaseModel):
