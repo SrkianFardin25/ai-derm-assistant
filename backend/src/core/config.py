@@ -8,7 +8,10 @@ class Settings(BaseSettings):
     
     # Model & Inference
     MODEL_PATH: str = "checkpoints/efficientnet_b4_ham10000.onnx"
-    DEFAULT_TEMPERATURE: float = 1.0
+    # Non-unit safety fallback for the currently deployed legacy head. New
+    # retrained heads persist their validated temperature in head_v2.json and
+    # take precedence in dependency wiring.
+    DEFAULT_TEMPERATURE: float = 1.35
     INPUT_SIZE: int = 380  # EfficientNet-B4 native resolution
     
     # Groq LPU Clinical Narrative

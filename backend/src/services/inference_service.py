@@ -1,4 +1,4 @@
-"""Inference Service coordinating ONNX runtime, temperature calibration, and Grad-CAM."""
+"""Inference service coordinating ONNX runtime, calibration, and occlusion sensitivity."""
 
 import time
 from typing import Optional
@@ -7,7 +7,7 @@ from PIL import Image
 
 from src.domain.calibration import apply_temperature_scaling
 from src.infrastructure.explainability import (
-    generate_gradcam_overlay,
+    generate_occlusion_overlay,
     image_to_png_bytes,
 )
 from src.infrastructure.onnx_engine import ONNXInferenceEngine
@@ -82,11 +82,11 @@ class InferenceService:
         if normalized_uncertainty > self.MAX_ACTIONABLE_UNCERTAINTY:
             abstention_reasons.append("the model output is highly uncertain")
         
-        # 6. Generate Grad-CAM explainability heatmap overlay
+        # 6. Generate occlusion-sensitivity explainability heatmap overlay
         rgb_array = np.array(image.convert("RGB"), dtype=np.uint8)
         cam_2d = activation_map
             
-        overlay_rgb = generate_gradcam_overlay(rgb_array, cam_2d)
+        overlay_rgb = generate_occlusion_overlay(rgb_array, cam_2d)
         heatmap_png = image_to_png_bytes(overlay_rgb)
         
         return PredictionResult(

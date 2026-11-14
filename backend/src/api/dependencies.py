@@ -17,7 +17,8 @@ def get_onnx_engine() -> ONNXInferenceEngine:
 def get_inference_service() -> InferenceService:
     settings = get_settings()
     engine = get_onnx_engine()
-    return InferenceService(engine=engine, temperature=settings.DEFAULT_TEMPERATURE)
+    temperature = engine.calibration_temperature or settings.DEFAULT_TEMPERATURE
+    return InferenceService(engine=engine, temperature=temperature)
 
 
 @lru_cache()

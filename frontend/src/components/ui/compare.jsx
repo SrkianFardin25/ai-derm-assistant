@@ -111,18 +111,18 @@ export const Compare = ({
         </AnimatePresence>
       </div>
 
-      {/* Second Image (Background Grad-CAM Heatmap) */}
+      {/* Second Image (Background occlusion-sensitivity heatmap) */}
       <AnimatePresence initial={false}>
         {secondImage && (
           <motion.div className="absolute inset-0 z-10 w-full h-full select-none">
             <img
               className={cn("w-full h-full object-cover select-none", secondImageClassname)}
-              alt="Grad-CAM Saliency Heatmap"
+              alt="Occlusion Sensitivity Heatmap"
               src={secondImage}
               draggable={false}
             />
             <span className="absolute top-4 right-4 z-30 bg-red-600/85 backdrop-blur-md text-white font-mono text-[11px] px-3 py-1 rounded-full font-bold shadow-md">
-              Grad-CAM Explainability
+              Occlusion Sensitivity
             </span>
           </motion.div>
         )}

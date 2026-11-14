@@ -1,4 +1,4 @@
-"""Explainable AI (XAI) and Grad-CAM Saliency Engine for DermAssist AI."""
+"""Explainable AI renderer for occlusion-sensitivity maps."""
 
 import io
 from typing import Optional
@@ -8,28 +8,28 @@ import numpy as np
 from PIL import Image
 
 
-def normalize_cam_map(cam: np.ndarray) -> np.ndarray:
-    """Normalize 2D activation map to range [0.0, 1.0]."""
-    cam = np.maximum(cam, 0)
-    max_val = np.max(cam)
+def normalize_saliency_map(saliency: np.ndarray) -> np.ndarray:
+    """Normalize a 2D occlusion-sensitivity map to range [0.0, 1.0]."""
+    saliency = np.maximum(saliency, 0)
+    max_val = np.max(saliency)
     if max_val > 1e-7:
-        cam = cam / max_val
+        saliency = saliency / max_val
     else:
-        cam = np.zeros_like(cam)
-    return cam
+        saliency = np.zeros_like(saliency)
+    return saliency
 
 
-def generate_gradcam_overlay(
+def generate_occlusion_overlay(
     image_rgb: np.ndarray,
-    cam_2d: np.ndarray,
+    saliency_2d: np.ndarray,
     alpha: float = 0.45,
     colormap: int = cv2.COLORMAP_JET
 ) -> np.ndarray:
-    """Overlay a 2D saliency heatmap onto an RGB image using OpenCV.
+    """Overlay a 2D occlusion-sensitivity map onto an RGB image using OpenCV.
     
     Args:
         image_rgb: Source image array of shape (H, W, 3) with values in [0, 255].
-        cam_2d: 2D activation/saliency map of shape (h, w).
+        saliency_2d: 2D occlusion-sensitivity map of shape (h, w).
         alpha: Blending weight for heatmap overlay (0.0 to 1.0).
         colormap: OpenCV colormap constant (default: COLORMAP_JET).
         
@@ -37,7 +37,7 @@ def generate_gradcam_overlay(
         Blended RGB uint8 image array of shape (H, W, 3).
     """
     h, w = image_rgb.shape[:2]
-    norm_cam = normalize_cam_map(cam_2d)
+    norm_cam = normalize_saliency_map(saliency_2d)
     
     # Resize saliency map to full image resolution with bicubic interpolation
     resized_cam = cv2.resize(norm_cam, (w, h), interpolation=cv2.INTER_CUBIC)
@@ -53,6 +53,10 @@ def generate_gradcam_overlay(
     heatmap_float = heatmap_rgb.astype(np.float32)
     blended = alpha * heatmap_float + (1.0 - alpha) * image_float
     return np.clip(blended, 0, 255).astype(np.uint8)
+
+
+# Backward-compatible import for clients built against the old name.
+generate_gradcam_overlay = generate_occlusion_overlay
 
 
 

@@ -106,7 +106,7 @@ async def predict_lesion(
     history_service: HistoryService = Depends(get_history_service),
 ):
     """
-    Run EfficientNet-B4 ONNX inference, temperature calibration, and Grad-CAM saliency extraction.
+        Run EfficientNet-B4 ONNX inference, temperature calibration, and occlusion-sensitivity visualization.
     Conforms directly to PRD v2.0 mobile contract.
     """
     if not file.content_type or not file.content_type.startswith("image/"):
@@ -120,11 +120,11 @@ async def predict_lesion(
         raw_img = Image.open(io.BytesIO(contents))
         # Let JPEG decode at reduced scale instead of full 12MP resolution.
         raw_img.draft("RGB", (MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
-        image = ImageOps.exif_transpose(raw_img).convert("RGB")
+        image = ImageOps.exif_transpose(raw_img)
         # Phone photos (12MP+) blow past the 512 MB Render limit during the
         # full-resolution heatmap overlay. The model only sees 380x380, so
         # cap the working image size; predictions are unaffected.
-        image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.Resampling.LANCZOS)
+        image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.Resampling.BILINEAR)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -146,7 +146,7 @@ async def predict_lesion(
         # happened to be a benign category.
         v2_risk_level, v2_risk_label = "yellow", "Monitor"
     v2_uncertainty = categorize_uncertainty(prediction.uncertainty_score)
-    probs_by_code = {p.code: round(float(p.probability), 4) for p in prediction.probabilities}
+    probs_by_code = {p.code: float(p.probability) for p in prediction.probabilities}
     all_probs = [probs_by_code.get(c, 0.0) for c in CLASS_NAMES]
 
     # 2. Generate Groq clinical advisory summary
@@ -166,7 +166,7 @@ async def predict_lesion(
                 "by a dermatologist."
             )
 
-    # 3. Base64 encode Grad-CAM saliency heatmap
+    # 3. Base64 encode occlusion-sensitivity heatmap
     heatmap_b64 = None
     if prediction.saliency_heatmap_bytes:
         heatmap_b64 = base64.b64encode(prediction.saliency_heatmap_bytes).decode("utf-8")

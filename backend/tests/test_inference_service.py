@@ -10,7 +10,7 @@ from src.services.inference_service import InferenceService
 
 
 def test_inference_service_full_pipeline():
-    """Verify inference pipeline produces valid calibrated prediction and Grad-CAM overlay."""
+    """Verify inference pipeline produces a calibrated prediction and occlusion overlay."""
     # Create synthetic lesion image (RGB 128x128)
     img_data = np.full((128, 128, 3), 180, dtype=np.uint8)
     # Add darker lesion center

@@ -1,4 +1,4 @@
-"""ONNX Runtime Inference Engine with Dynamic HuggingFace Hub Streaming."""
+"""ONNX Runtime inference engine with dynamic HuggingFace Hub streaming."""
 
 import os
 from typing import Optional, Tuple
@@ -43,6 +43,22 @@ def _load_head(model_path: Optional[str]):
     return W, np.asarray(h["bias"], dtype=np.float32)
 
 
+def _load_head_temperature(model_path: Optional[str]) -> Optional[float]:
+    """Read the post-head calibration temperature persisted by retraining."""
+    import json
+    if not model_path:
+        return None
+    head_path = os.path.join(os.path.dirname(model_path), "head_v2.json")
+    if not os.path.exists(head_path):
+        return None
+    try:
+        with open(head_path) as f:
+            value = json.load(f).get("temperature")
+        return float(value) if value is not None and float(value) > 0 else None
+    except (OSError, TypeError, ValueError):
+        return None
+
+
 class ONNXInferenceEngine:
     """Ultra-fast CPU inference runner using ONNX Runtime with sub-250ms target."""
 
@@ -51,6 +67,7 @@ class ONNXInferenceEngine:
         self.input_name = "input"
         self.output_name = "output"
         self.model_path = model_path
+        self.calibration_temperature: Optional[float] = None
         self._initialize_session(model_path, hf_repo_id)
 
     def _initialize_session(self, model_path: Optional[str], hf_repo_id: Optional[str]) -> None:
@@ -97,6 +114,7 @@ class ONNXInferenceEngine:
             self.output_name = self.session.get_outputs()[0].name
             outputs = [o.name for o in self.session.get_outputs()]
             self.head = _load_head(resolved_path) if "features" in outputs else None
+            self.calibration_temperature = _load_head_temperature(resolved_path)
 
     head = None
 
@@ -110,12 +128,12 @@ class ONNXInferenceEngine:
         return self.session.run(None, {self.input_name: tensor})[0][0]
 
     def run_inference(self, image: Image.Image) -> Tuple[np.ndarray, np.ndarray]:
-        """Execute forward pass and return (raw_logits, activation_map).
+        """Execute forward pass and return (raw_logits, occlusion_map).
 
         Returns:
             Tuple containing:
                 - raw_logits: Array of shape (7,)
-                - activation_map: 2D occlusion-saliency map of shape (GRID, GRID)
+                - occlusion_map: 2D occlusion-sensitivity map of shape (GRID, GRID)
         """
         if self.session is None:
             raise RuntimeError("Production ONNX session not loaded. Ensure checkpoints/efficientnet_b4_ham10000.onnx exists.")

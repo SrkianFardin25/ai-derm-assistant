@@ -41,7 +41,7 @@ class HistoryService:
         )
         record.image_url = image_url or ""
 
-        # 2. Upload Grad-CAM heatmap if present
+        # 2. Upload occlusion-sensitivity heatmap if present
         if heatmap_bytes:
             heatmap_url = self.client.upload_media(
                 file_bytes=heatmap_bytes,

@@ -153,12 +153,12 @@ class ReportService:
         story.append(summary_table)
         story.append(Spacer(1, 10))
 
-        # 3. Visual Evidence (Photo + Grad-CAM Heatmap Side-by-Side)
+        # 3. Visual Evidence (Photo + occlusion-sensitivity heatmap side-by-side)
         orig_img_flow = self._prepare_image_flowable(original_image_b64 or prediction.get("image_b64"))
         heat_img_flow = self._prepare_image_flowable(heatmap_b64 or prediction.get("heatmap_b64") or prediction.get("saliency_heatmap_base64"))
 
         if orig_img_flow or heat_img_flow:
-            story.append(Paragraph("Visual Evidence & Explainability (Grad-CAM Attention)", self.heading_style))
+            story.append(Paragraph("Visual Evidence & Explainability (Occlusion Sensitivity)", self.heading_style))
             img_row = []
             img_labels = []
             if orig_img_flow:

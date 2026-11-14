@@ -20,7 +20,10 @@ def feats(imgs):
 import json,urllib.request,os,io,sys,numpy as np,pyarrow.parquet as pq
 from PIL import Image
 from common import feats
-m={'ACK':0,'SCC':0,'BCC':1,'SEK':2,'MEL':4,'NEV':5}
+# PAD-UFES-20 has labels that are not represented by the seven-class
+# HAM10000 contract.  Do not silently relabel SCC as AKIEC, or invent DF/VASC
+# smartphone supervision; those require an explicit schema/model change.
+m={'ACK':0,'BCC':1,'SEK':2,'MEL':4,'NEV':5}
 urls=json.load(urllib.request.urlopen("https://huggingface.co/api/datasets/OctoMed/PAD_UFES_20/parquet"))["default"]["train"]
 for k in map(int,sys.argv[1:]):
     if os.path.exists(f"pad_{k}.npz"): continue
@@ -28,13 +31,20 @@ for k in map(int,sys.argv[1:]):
     pf=pq.ParquetFile(fn); X=[];y=[];sub=[];h=[]
     for b in pf.iter_batches(batch_size=32,columns=["image","image_hash","answer"]):
         t=b.to_pylist()
-        X.append(feats([Image.open(io.BytesIO(r["image"]["bytes"])) for r in t]))
-        for r in t:
-            c=r["answer"].split("(")[-1].rstrip(")"); y.append(m[c]); sub.append(c); h.append(r["image_hash"])
+        batch_features=feats([Image.open(io.BytesIO(r["image"]["bytes"])) for r in t])
+        keep=[]
+        for i, r in enumerate(t):
+            c=r["answer"].split("(")[-1].rstrip(")")
+            if c not in m:
+                continue
+            keep.append(i); y.append(m[c]); sub.append(c); h.append(r["image_hash"])
+        if keep:
+            X.append(batch_features[keep])
     np.savez(f"pad_{k}.npz",X=np.concatenate(X),y=np.array(y),sub=np.array(sub),h=np.array(h))
     os.remove(fn); print(k,len(y),flush=True)
 # --- train.py ---
-import numpy as np,onnx,glob
+import base64,json,numpy as np,onnx,glob
+from scipy.optimize import minimize_scalar
 from onnx import numpy_helper
 C=["akiec","bcc","bkl","df","mel","nv","vasc"]
 m=onnx.load('repo/backend/checkpoints/efficientnet_b4_ham10000.onnx')
@@ -89,4 +99,21 @@ for lam in []:
         if best is None or a+h>best[0]: best=(a+h,lam,lr,W,b)
 
 W,b=train(0.1,0.003);print("FINAL");ev(W,b,PX[pte],Py[pte],"phone(PAD)");ev(W,b,HteX,Htey,"dermoscopy(HAM)")
-import json;json.dump({"classes":C,"weight":W.astype(np.float32).round(6).tolist(),"bias":b.astype(np.float32).round(6).tolist(),"note":"Linear head retrained on pooled EfficientNet-B4 features: HAM10000 + PAD-UFES-20 smartphone images"},open("head_v2.json","w"))
+
+# Calibrate the final swapped head, not the original ONNX classifier head.
+cal_logits=HteX@W.T+b
+def nll(T):
+    z=cal_logits/max(0.05,float(T)); z=z-z.max(1,keepdims=True)
+    p=np.exp(z); p=p/p.sum(1,keepdims=True)
+    return float(-np.log(np.clip(p[np.arange(len(p)),Htey],1e-12,1.0)).mean())
+optimal_t=float(minimize_scalar(nll,bounds=(0.1,10.0),method="bounded").x)
+W32=W.astype("<f4")
+json.dump({
+    "classes":C,
+    "shape":list(W32.shape),
+    "weight_f32_b64":base64.b64encode(W32.tobytes()).decode("ascii"),
+    "bias":b.astype(np.float32).tolist(),
+    "temperature":round(optimal_t,6),
+    "note":"Linear head retrained on canonical seven-class labels; unsupported PAD-UFES-20 labels excluded. Temperature fit on held-out HAM logits after head retraining."
+},open("head_v2.json","w"),indent=2)
+print("FINAL TEMPERATURE",optimal_t)
