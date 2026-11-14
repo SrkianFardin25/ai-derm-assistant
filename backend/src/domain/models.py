@@ -101,6 +101,8 @@ class PredictionResult:
     temperature: float
     uncertainty_score: float
     probabilities: List[ClassProbability]
+    is_actionable: bool = True
+    abstention_reason: Optional[str] = None
     saliency_heatmap_bytes: Optional[bytes] = None
     clinical_summary: Optional[str] = None
     gemini_summary: Optional[str] = None

@@ -30,6 +30,12 @@ class InferenceService:
         self.engine = engine or ONNXInferenceEngine()
         self.temperature = max(0.1, float(temperature))
 
+    # A top-1 softmax result is not safe to present as a classification when
+    # the model is nearly tied or its distribution is highly uncertain.
+    MIN_ACTIONABLE_CONFIDENCE = 0.55
+    MIN_ACTIONABLE_MARGIN = 0.12
+    MAX_ACTIONABLE_UNCERTAINTY = 0.72
+
     def predict(self, image: Image.Image) -> PredictionResult:
         """Execute full inference pipeline on a PIL RGB image."""
         start_time = time.perf_counter()
@@ -66,6 +72,15 @@ class InferenceService:
         class_prob_list.sort(key=lambda x: x.probability, reverse=True)
         top_prob = class_prob_list[0]
         top_idx = CLASS_NAMES.index(top_prob.code)
+        margin = top_prob.probability - class_prob_list[1].probability
+
+        abstention_reasons = []
+        if top_prob.probability < self.MIN_ACTIONABLE_CONFIDENCE:
+            abstention_reasons.append("calibrated confidence is below the safe threshold")
+        if margin < self.MIN_ACTIONABLE_MARGIN:
+            abstention_reasons.append("the leading lesion classes are too close to separate reliably")
+        if normalized_uncertainty > self.MAX_ACTIONABLE_UNCERTAINTY:
+            abstention_reasons.append("the model output is highly uncertain")
         
         # 6. Generate Grad-CAM explainability heatmap overlay
         rgb_array = np.array(image.convert("RGB"), dtype=np.uint8)
@@ -83,6 +98,8 @@ class InferenceService:
             temperature=self.temperature,
             uncertainty_score=normalized_uncertainty,
             probabilities=class_prob_list,
+            is_actionable=not abstention_reasons,
+            abstention_reason="; ".join(abstention_reasons) if abstention_reasons else None,
             saliency_heatmap_bytes=heatmap_png,
             clinical_summary=None,
             gemini_summary=None

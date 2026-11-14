@@ -47,6 +47,7 @@ export default function ResultScreen({
   }
 
   const confidencePercent = (prediction.confidence * 100);
+  const isAbstained = prediction.is_actionable === false;
   const CLASS_LABELS = [
     "Actinic Keratosis", "Basal Cell Carcinoma", "Benign Keratosis", "Dermatofibroma",
     "Melanoma", "Melanocytic Nevus (Mole)", "Vascular Lesion",
@@ -59,7 +60,7 @@ export default function ResultScreen({
         .filter((a) => a.p >= 0.1)
     : [];
   const isLowConfidence =
-    (prediction.confidence ?? 1) < 0.6 || String(prediction.uncertainty).toLowerCase() === "high";
+    isAbstained || (prediction.confidence ?? 1) < 0.6 || String(prediction.uncertainty).toLowerCase() === "high";
   const uncertaintyLabel =
     confidencePercent >= 85 ? "Low Uncertainty" : confidencePercent >= 65 ? "Moderate Uncertainty" : "High Uncertainty";
   const uncertaintyColor =
@@ -162,15 +163,20 @@ export default function ResultScreen({
       {isLowConfidence && (
         <Alert variant="warning">
           <AlertTriangle className="w-4 h-4" />
-          <AlertTitle>Image unclear: the AI isn't confident about this result</AlertTitle>
+          <AlertTitle>
+            {isAbstained ? "Inconclusive result: no lesion type was assigned" : "Image unclear: the AI isn't confident about this result"}
+          </AlertTitle>
           <AlertDescription>
             <p>
+              {isAbstained && prediction.abstention_reason && (
+                <>The system stopped before presenting a definitive classification because {prediction.abstention_reason}. </>
+              )}
               Retake the photo close to the spot (about 10 cm away), in daylight, in focus, with only the lesion filling
               most of the frame.
               {rankedAlternatives.length > 0 && (
                 <> It could also be {rankedAlternatives.map((a) => `${a.name} (${Math.round(a.p * 100)}%)`).join(" or ")}.</>
               )}{" "}
-              Please show it to a dermatologist either way.
+              Please show it to a dermatologist either way; this tool cannot rule out skin cancer.
             </p>
           </AlertDescription>
         </Alert>
@@ -203,7 +209,7 @@ export default function ResultScreen({
                   Primary Classification
                 </p>
                 <h3 className="text-2xl sm:text-3xl font-bold font-heading text-slate-900 mt-0.5">
-                  {prediction.class_name}
+                  {isAbstained ? "Inconclusive — dermatologist review needed" : prediction.class_name}
                 </h3>
               </div>
 

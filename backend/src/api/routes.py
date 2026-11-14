@@ -141,6 +141,10 @@ async def predict_lesion(
 
     # 1. Map to PRD v2.0 3-Tier Risk Badge (green / yellow / red)
     v2_risk_level, v2_risk_label = map_risk_tier(prediction.top_class)
+    if not prediction.is_actionable:
+        # Do not let an abstained result appear benign because its top class
+        # happened to be a benign category.
+        v2_risk_level, v2_risk_label = "yellow", "Monitor"
     v2_uncertainty = categorize_uncertainty(prediction.uncertainty_score)
     probs_by_code = {p.code: round(float(p.probability), 4) for p in prediction.probabilities}
     all_probs = [probs_by_code.get(c, 0.0) for c in CLASS_NAMES]
@@ -148,11 +152,19 @@ async def predict_lesion(
     # 2. Generate Groq clinical advisory summary
     clinical_summary = None
     if generate_summary:
-        try:
-            clinical_summary = await run_in_threadpool(groq_service.generate_clinical_summary, prediction)
-            prediction.clinical_summary = clinical_summary
-        except Exception:
-            clinical_summary = None
+        if prediction.is_actionable:
+            try:
+                clinical_summary = await run_in_threadpool(groq_service.generate_clinical_summary, prediction)
+                prediction.clinical_summary = clinical_summary
+            except Exception:
+                clinical_summary = None
+        else:
+            clinical_summary = (
+                "This image was inconclusive and no lesion type was assigned. "
+                "Please retake the photo in focus with the lesion filling the frame and "
+                "have any persistent, changing, bleeding, or suspicious lesion examined "
+                "by a dermatologist."
+            )
 
     # 3. Base64 encode Grad-CAM saliency heatmap
     heatmap_b64 = None
@@ -192,6 +204,8 @@ async def predict_lesion(
         uncertainty=v2_uncertainty,
         heatmap_b64=f"data:image/png;base64,{heatmap_b64}" if heatmap_b64 else None,
         llm_explanation=clinical_summary,
+        is_actionable=prediction.is_actionable,
+        abstention_reason=prediction.abstention_reason,
         # Backward-compatible v1.0 Fields
         top_class=prediction.top_class,
         top_name=prediction.top_name,

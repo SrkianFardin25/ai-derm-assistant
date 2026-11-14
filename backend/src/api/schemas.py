@@ -20,6 +20,8 @@ class PredictionResponse(BaseModel):
     uncertainty: str = "low"             # "low" | "medium" | "high"
     heatmap_b64: Optional[str] = None
     llm_explanation: Optional[str] = None
+    is_actionable: bool = True
+    abstention_reason: Optional[str] = None
 
     # Backward-compatible v1.0 Fields
     top_class: Optional[str] = None

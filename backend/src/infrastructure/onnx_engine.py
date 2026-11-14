@@ -121,7 +121,10 @@ class ONNXInferenceEngine:
             raise RuntimeError("Production ONNX session not loaded. Ensure checkpoints/efficientnet_b4_ham10000.onnx exists.")
 
         tensor = preprocess_image(image)
-        logits = self._logits(tensor)
+        # Average original and horizontally flipped views so predictions are
+        # less sensitive to lesion orientation and asymmetric lighting.
+        flipped_tensor = np.ascontiguousarray(tensor[:, :, :, ::-1])
+        logits = (self._logits(tensor) + self._logits(flipped_tensor)) / 2.0
 
         # Softmax of baseline
         exp_logits = np.exp(logits - np.max(logits))
@@ -142,7 +145,8 @@ class ONNXInferenceEngine:
                 c0, c1 = col * pw, (col + 1) * pw
                 # Replace patch with ImageNet channel means (already normalized space: mean=0)
                 occluded[0, :, r0:r1, c0:c1] = 0.0
-                occ_logits = self._logits(occluded)
+                occ_flipped = np.ascontiguousarray(occluded[:, :, :, ::-1])
+                occ_logits = (self._logits(occluded) + self._logits(occ_flipped)) / 2.0
                 occ_exp = np.exp(occ_logits - np.max(occ_logits))
                 occ_probs = occ_exp / np.sum(occ_exp)
                 # Saliency = how much confidence dropped when this patch was hidden
