@@ -146,3 +146,14 @@ Every task follows a strict 4-step atomic verification cycle:
 - Green routing is stricter and limited to benign classes (`bkl`, `df`, `nv`, `vasc`): confidence >= 0.85, margin >= 0.25, and normalized entropy <= 0.40. `akiec` routes yellow; `bcc` and `mel` route red for clinician review.
 - Added deterministic threshold regression tests. Verification: compileall passed, targeted inference tests 4/4 passed, full backend suite 24/24 passed, and `git diff --check` passed.
 - These are explicitly provisional engineering guardrails, not clinically validated operating points; production model weights remain unchanged.
+
+## 2026-11-16 Comprehensive Security Hardening & Lockdown
+- Secret & Key Protection: Hardened root and frontend `.gitignore` for `.env*`, `*.key`, `*.pem`, `*.db`, and credentials. Masked secret attributes (`GROQ_API_KEY`, `SUPABASE_KEY`, `ADMIN_API_KEY`) from Pydantic `Settings` repr and adapter `__repr__` to prevent accidental logging.
+- Transport & HTTPS Everywhere: Added `security_headers_and_https_middleware` enforcing HSTS (2 years, subdomains, preload), X-Content-Type-Options `nosniff`, X-Frame-Options `DENY`, Referrer-Policy, CSP, and automated 301 HTTPS redirection for `x-forwarded-proto: http`. Configured edge security headers in `frontend/vercel.json`.
+- CORS Hardening: Disallowed `allow_credentials=True` when wildcard `*` origins are used to comply with W3C/Fetch standards and prevent CSRF/credential leakage.
+- Admin Surface & Docs Lockdown: Confirmed zero rogue admin pages; locked `/docs`, `/redoc`, and `/openapi.json` in production unless explicitly enabled via `ENABLE_DOCS`. Gated administrative endpoints (`/feedback/summary`) behind `X-Admin-Key` with constant-time verification.
+- Password Hashing Utility: Implemented OWASP-compliant `scrypt` salted password hashing with `hmac.compare_digest` in `backend/src/core/security.py`.
+- Database Lockdown: Fixed `docs/supabase_schema.sql` by dropping dangerous public UPDATE and DELETE policies. Created `docs/security_lock_database.sql` for live RLS lockdown and restricted Storage buckets to validated image MIME types (15MB cap).
+- Daily Backup System: Created `scripts/backup_supabase.py` with 30-day retention pruning and `.github/workflows/daily_backup.yml` running every midnight UTC (`0 0 * * *`).
+- Upload Security: Added magic byte verification and 15MB file cap with Pillow decompression bomb protection (`MAX_IMAGE_PIXELS <= 25,000,000`). Sanitized API error outputs.
+- Verification: `python scripts/security_audit.py` passed 35/35 checks (exit code 0); `pytest backend/tests/ -v` passed 31/31 tests (exit code 0); `cd frontend && npm run build` passed (exit code 0).

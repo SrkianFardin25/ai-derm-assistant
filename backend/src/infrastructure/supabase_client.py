@@ -28,6 +28,12 @@ class SupabaseCloudClient:
         self._memory_store: List[Dict[str, Any]] = []
         self._init_client()
 
+    def __repr__(self) -> str:
+        return f"<SupabaseCloudClient url='{self.url}' connected={self.is_connected}>"
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
     def _init_client(self) -> None:
         """Initialize official Supabase client if credentials exist."""
         if self.url and self.key and create_client is not None:

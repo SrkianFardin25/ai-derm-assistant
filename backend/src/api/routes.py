@@ -16,7 +16,10 @@ from src.api.dependencies import (
     get_inference_service,
     get_report_service,
     get_feedback_service,
+    verify_admin_access,
 )
+from src.core.config import get_settings
+from src.core.security import validate_image_payload
 from src.api.schemas import (
     ClassProbabilityResponse,
     ClinicalSummaryRequest,
@@ -58,11 +61,13 @@ router = APIRouter()
 @router.api_route("/", methods=["GET", "HEAD"], tags=["Discovery"])
 def api_root():
     """Canonical API Service Discovery Manifest for headless clients and developers."""
+    settings = get_settings()
+    docs_status = "/docs" if (settings.ENABLE_DOCS or settings.ENVIRONMENT != "production") else "disabled_in_production"
     return {
         "service": "DermAssist AI — Clinical Inference Engine",
         "version": "2.0.2",
         "status": "operational",
-        "docs_url": "/docs",
+        "docs_url": docs_status,
         "endpoints": {
             "predict": "POST /predict",
             "report": "POST /report",
@@ -120,8 +125,21 @@ async def predict_lesion(
             detail="Invalid file type. Please upload a valid image (JPEG/PNG).",
         )
 
+    contents = await file.read()
+    is_valid, validation_err = validate_image_payload(contents)
+    if not is_valid:
+        err_msg = validation_err or "Invalid image payload."
+        if "exceeds" in err_msg:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=err_msg,
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=err_msg,
+        )
+
     try:
-        contents = await file.read()
         raw_img = Image.open(io.BytesIO(contents))
         # Let JPEG decode at reduced scale instead of full 12MP resolution.
         raw_img.draft("RGB", (MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
@@ -131,9 +149,10 @@ async def predict_lesion(
         # cap the working image size; predictions are unaffected.
         image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE), Image.Resampling.BILINEAR)
     except Exception as exc:
+        logger.error(f"Failed to decode image: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to decode image: {str(exc)}",
+            detail="Failed to decode image. Please ensure it is a valid, uncorrupted JPEG/PNG image.",
         )
 
     quality = assess_image_quality(image)
@@ -257,7 +276,10 @@ def submit_feedback(
 
 
 @router.get("/feedback/summary", response_model=FeedbackResponse, tags=["Monitoring"])
-def feedback_summary(feedback_service: FeedbackService = Depends(get_feedback_service)):
+def feedback_summary(
+    feedback_service: FeedbackService = Depends(get_feedback_service),
+    _admin_verified: bool = Depends(verify_admin_access),
+):
     return feedback_service.summary()
 
 
@@ -277,9 +299,10 @@ def generate_pdf_report(
         )
         return PDFReportResponse(pdf_b64=pdf_b64)
     except Exception as exc:
+        logger.error(f"PDF generation failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"PDF generation failed: {str(exc)}",
+            detail="PDF generation failed. Please try again later.",
         )
 
 

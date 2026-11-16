@@ -21,20 +21,41 @@ CREATE TABLE IF NOT EXISTS public.scans (
 CREATE INDEX IF NOT EXISTS idx_scans_created_at ON public.scans (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_scans_predicted_class ON public.scans (predicted_class);
 
--- 3. Row Level Security (RLS)
+-- 3. Row Level Security (RLS) - Hardened Append-Only Policy
 ALTER TABLE public.scans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.scans FORCE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow public read access to scans" ON public.scans;
 CREATE POLICY "Allow public read access to scans" ON public.scans FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Allow public insert to scans" ON public.scans;
 CREATE POLICY "Allow public insert to scans" ON public.scans FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update to scans" ON public.scans FOR UPDATE USING (true);
 
--- 4. Storage Bucket Setup
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('scans', 'scans', true)
-ON CONFLICT (id) DO NOTHING;
+-- Disallow public UPDATE and DELETE on scans (immutable audit trail; only service_role can mutate)
+DROP POLICY IF EXISTS "Allow public update to scans" ON public.scans;
+DROP POLICY IF EXISTS "Allow public delete from scans" ON public.scans;
 
-CREATE POLICY "Allow public uploads to scans bucket" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'scans');
-CREATE POLICY "Allow public view from scans bucket" ON storage.objects FOR SELECT USING (bucket_id = 'scans');
+-- 4. Storage Bucket Setup (Hardened to verified image formats & 15MB limit)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('scans', 'scans', true, 15728640, ARRAY['image/jpeg', 'image/png', 'image/webp'])
+ON CONFLICT (id) DO UPDATE SET
+    file_size_limit = 15728640,
+    allowed_mime_types = ARRAY['image/jpeg', 'image/png', 'image/webp'];
+
+DROP POLICY IF EXISTS "Allow public uploads to scans bucket" ON storage.objects;
+CREATE POLICY "Allow public uploads to scans bucket" ON storage.objects
+FOR INSERT WITH CHECK (
+    bucket_id = 'scans'
+    AND (LOWER(storage.extension(name)) IN ('jpg', 'jpeg', 'png', 'webp'))
+);
+
+DROP POLICY IF EXISTS "Allow public view from scans bucket" ON storage.objects;
+CREATE POLICY "Allow public view from scans bucket" ON storage.objects
+FOR SELECT USING (bucket_id = 'scans');
+
+-- Disallow public deletion or mutation of diagnostic images
+DROP POLICY IF EXISTS "Allow public delete from scans bucket" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public update to scans bucket" ON storage.objects;
 
 -- 5. Longitudinal Lesion Visits Table
 CREATE TABLE IF NOT EXISTS public.lesion_visits (

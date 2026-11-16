@@ -6,6 +6,7 @@ __pycache__/
 .env.*
 checkpoints/*.pt
 checkpoints/*.onnx
+checkpoints/*.data
 data/*.db
 .vscode/
 .idea/
@@ -21,5 +22,24 @@ backend/.env
 backend/.env.*
 backend/checkpoints/*.pt
 backend/checkpoints/*.onnx
+backend/checkpoints/*.data
 !backend/checkpoints/efficientnet_b4_ham10000.onnx
 !backend/.env.example
+
+# Secrets, Credentials & Certificates
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+*.id_rsa
+*.id_ed25519
+*credentials*.json
+secrets/
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+backups/*.json.gz
+!backups/.gitkeep

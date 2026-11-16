@@ -1,5 +1,8 @@
 from functools import lru_cache
+from typing import Optional
+from fastapi import Header, HTTPException, status
 from src.core.config import get_settings
+from src.core.security import verify_admin_key
 from src.infrastructure.onnx_engine import ONNXInferenceEngine
 from src.infrastructure.supabase_client import SupabaseCloudClient
 from src.services.feedback_service import FeedbackService
@@ -8,6 +11,18 @@ from src.services.groq_service import GroqService
 from src.services.history_service import HistoryService
 from src.services.inference_service import InferenceService
 from src.services.report_service import ReportService
+
+
+def verify_admin_access(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")) -> bool:
+    """Validate administrator key header (X-Admin-Key) against configured secret."""
+    settings = get_settings()
+    if settings.ADMIN_API_KEY:
+        if not x_admin_key or not verify_admin_key(x_admin_key, settings.ADMIN_API_KEY):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing administrator key.",
+            )
+    return True
 
 
 @lru_cache()

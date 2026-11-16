@@ -24,6 +24,12 @@ class GroqService:
             except Exception:
                 self.client = None
 
+    def __repr__(self) -> str:
+        return f"<GroqService model='{self.model}' active={self.client is not None}>"
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
     def generate_clinical_summary(self, prediction: PredictionResult) -> str:
         """Generate patient educational narrative, falling back to static card if needed."""
         card = get_knowledge_card(prediction.top_class)
