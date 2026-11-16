@@ -31,7 +31,6 @@ export default function ResultScreen({
   addToast
 }) {
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
-  const [malignantAcknowledged, setMalignantAcknowledged] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
 
   if (!prediction) {
@@ -50,7 +49,6 @@ export default function ResultScreen({
 
   const confidencePercent = (prediction.confidence * 100);
   const isAbstained = prediction.is_actionable === false;
-  const requiresAcknowledgment = prediction.risk_level === "red" || prediction.routing_zone === "red";
   const CLASS_LABELS = [
     "Actinic Keratosis", "Basal Cell Carcinoma", "Benign Keratosis", "Dermatofibroma",
     "Melanoma", "Melanocytic Nevus (Mole)", "Vascular Lesion",
@@ -199,21 +197,6 @@ export default function ResultScreen({
         </Alert>
       )}
 
-      {requiresAcknowledgment && (
-        <Alert variant="warning">
-          <AlertTriangle className="w-4 h-4" />
-          <AlertTitle>Dermatologist review is required</AlertTitle>
-          <AlertDescription>
-            This screening result may indicate a high-risk lesion. It is not a diagnosis and cannot confirm or exclude cancer.
-            Please arrange prompt in-person evaluation and do not delay care because of this app.
-            <label className="flex items-center gap-2 mt-3 font-medium text-slate-800">
-              <input type="checkbox" checked={malignantAcknowledged} onChange={(e) => setMalignantAcknowledged(e.target.checked)} />
-              I understand this result requires clinical confirmation.
-            </label>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Main Grid: Visualizer & Result Metrics */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Compare Slider (6 cols) */}
@@ -241,7 +224,7 @@ export default function ResultScreen({
                   Primary Classification
                 </p>
                 <h3 className="text-2xl sm:text-3xl font-bold font-heading text-slate-900 mt-0.5">
-                  {!malignantAcknowledged && requiresAcknowledgment ? "High-risk result — review required" : isAbstained ? "Inconclusive — dermatologist review needed" : prediction.class_name}
+                  {isAbstained ? "Inconclusive — dermatologist review needed" : prediction.class_name}
                 </h3>
               </div>
 
@@ -254,7 +237,7 @@ export default function ResultScreen({
               <div className="flex items-center justify-between text-xs font-medium">
                 <span className="text-slate-600">Calibrated Confidence:</span>
                 <span className="font-mono text-base font-bold text-slate-900">
-                  {requiresAcknowledgment && !malignantAcknowledged ? "Acknowledgment required" : <CountUp value={confidencePercent} />}
+                  <CountUp value={confidencePercent} />
                 </span>
               </div>
               <Progress
