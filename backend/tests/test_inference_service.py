@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 import pytest
 
-from src.core.onnx_engine import ONNXInferenceEngine
+from src.infrastructure.onnx_engine import ONNXInferenceEngine
 from src.domain.models import CLASS_NAMES, RiskLevel
 from src.services.inference_service import InferenceService
 

@@ -70,6 +70,7 @@ class ONNXInferenceEngine:
         self.model_path = model_path
         self.calibration_temperature: Optional[float] = None
         self.head_version = "base-head"
+        self.head = None  # set by _initialize_session when retrained head is present
         self._initialize_session(model_path, hf_repo_id)
 
     def _initialize_session(self, model_path: Optional[str], hf_repo_id: Optional[str]) -> None:
@@ -122,8 +123,6 @@ class ONNXInferenceEngine:
                 with open(head_path, "rb") as handle:
                     self.head_version = hashlib.sha256(handle.read()).hexdigest()[:16]
 
-    head = None
-
     def _logits(self, tensor: np.ndarray) -> np.ndarray:
         """Logits for a (1,3,H,W) tensor, using the retrained head when available."""
         if self.head is not None:
@@ -173,7 +172,9 @@ class ONNXInferenceEngine:
                 # Replace patch with ImageNet channel means (already normalized space: mean=0)
                 occluded[0, :, r0:r1, c0:c1] = 0.0
                 occ_flipped = np.ascontiguousarray(occluded[:, :, :, ::-1])
-                occ_logits = (self._logits(occluded) + self._logits(occ_flipped)) / 2.0
+                occ_vertical = np.ascontiguousarray(occluded[:, :, ::-1, :])
+                # Use same 3-view TTA as the baseline so the confidence delta is comparable
+                occ_logits = (self._logits(occluded) + self._logits(occ_flipped) + self._logits(occ_vertical)) / 3.0
                 occ_exp = np.exp(occ_logits - np.max(occ_logits))
                 occ_probs = occ_exp / np.sum(occ_exp)
                 # Saliency = how much confidence dropped when this patch was hidden

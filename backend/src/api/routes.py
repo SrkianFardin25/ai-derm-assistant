@@ -41,8 +41,6 @@ from src.domain.models import (
     map_risk_tier,
     CLASS_NAMES,
 )
-
-logger = logging.getLogger("dermassist.routes")
 from src.services.geolocation_service import ClinicSearchError, GeolocationService
 from src.services.groq_service import GroqService
 from src.services.history_service import HistoryService
@@ -50,6 +48,8 @@ from src.services.inference_service import InferenceService
 from src.services.report_service import ReportService
 from src.services.feedback_service import FeedbackService
 from src.services.quality_service import assess_image_quality
+
+logger = logging.getLogger("dermassist.routes")
 
 MAX_IMAGE_SIDE = 1024
 
@@ -139,7 +139,7 @@ async def predict_lesion(
     quality = assess_image_quality(image)
     if not quality.acceptable:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "code": "IMAGE_QUALITY_INSUFFICIENT",
                 "message": quality.reason,
@@ -159,11 +159,13 @@ async def predict_lesion(
     # 1. Map to PRD v2.0 3-Tier Risk Badge (green / yellow / red)
     v2_risk_level, v2_risk_label = map_risk_tier(prediction.top_class)
     if not prediction.is_actionable:
-        # Do not let an abstained result appear benign because its top class
-        # happened to be a benign category.
         v2_risk_level, v2_risk_label = "yellow", "Monitor"
     if prediction.routing_zone == "red" and prediction.risk_level.value == "MALIGNANT":
         v2_risk_level, v2_risk_label = "red", "See doctor urgently"
+    # Sync routing_zone back: a benign class routed yellow (moderate confidence)
+    # must not display a green badge — that would mislead the user.
+    if prediction.routing_zone == "yellow" and v2_risk_level == "green":
+        v2_risk_level, v2_risk_label = "yellow", "Monitor"
     v2_uncertainty = categorize_uncertainty(prediction.uncertainty_score)
     probs_by_code = {p.code: float(p.probability) for p in prediction.probabilities}
     all_probs = [probs_by_code.get(c, 0.0) for c in CLASS_NAMES]
@@ -202,8 +204,6 @@ async def predict_lesion(
             )
         except Exception as exc:
             logger.warning(f"Cloud persistence failed (non-fatal): {exc}")
-    else:
-        saved_record = None
 
     probs_response = [
         ClassProbabilityResponse(
@@ -334,7 +334,7 @@ def get_lesion_timeline(
 def find_nearby_clinics(
     lat: float = Query(..., description="User latitude"),
     lon: float = Query(..., description="User longitude"),
-    radius_km: float = Query(10.0, description="Search radius in kilometers (max 50)"),
+    radius_km: float = Query(10.0, le=50.0, description="Search radius in kilometers (max 50)"),
     geo_service: GeolocationService = Depends(get_geolocation_service),
 ):
     """
@@ -353,7 +353,7 @@ def find_nearby_clinics(
 
 
 @router.post("/api/v1/clinical-summary", response_model=ClinicalSummaryResponse, tags=["Advisory"])
-def generate_summary_endpoint(
+async def generate_summary_endpoint(
     payload: ClinicalSummaryRequest,
     groq_service: GroqService = Depends(get_groq_service),
 ):
@@ -376,5 +376,5 @@ def generate_summary_endpoint(
         probabilities=[],
     )
 
-    summary_text = groq_service.generate_clinical_summary(dummy_pred)
+    summary_text = await run_in_threadpool(groq_service.generate_clinical_summary, dummy_pred)
     return ClinicalSummaryResponse(clinical_summary=summary_text, model=groq_service.model)

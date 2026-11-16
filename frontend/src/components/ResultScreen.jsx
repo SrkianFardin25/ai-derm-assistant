@@ -49,16 +49,13 @@ export default function ResultScreen({
 
   const confidencePercent = (prediction.confidence * 100);
   const isAbstained = prediction.is_actionable === false;
-  const CLASS_LABELS = [
-    "Actinic Keratosis", "Basal Cell Carcinoma", "Benign Keratosis", "Dermatofibroma",
-    "Melanoma", "Melanocytic Nevus (Mole)", "Vascular Lesion",
-  ];
-  const rankedAlternatives = Array.isArray(prediction.all_probs)
-    ? prediction.all_probs
-        .map((p, i) => ({ name: CLASS_LABELS[i], p: Number(p) || 0 }))
-        .sort((a, b) => b.p - a.p)
+  const rankedAlternatives = Array.isArray(prediction.probabilities)
+    ? prediction.probabilities
+        .slice()
+        .sort((a, b) => b.probability - a.probability)
         .slice(1, 3)
-        .filter((a) => a.p >= 0.1)
+        .filter((a) => a.probability >= 0.1)
+        .map((a) => ({ name: a.class_name, p: a.probability }))
     : [];
   const isLowConfidence =
     isAbstained || (prediction.confidence ?? 1) < 0.6 || String(prediction.uncertainty).toLowerCase() === "high";
@@ -101,11 +98,7 @@ export default function ResultScreen({
       if (!res.ok) throw new Error("PDF report generation failed.");
       const data = await res.json();
       const byteCharacters = atob(data.pdf_b64);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
+      const byteArray = Uint8Array.from(byteCharacters, c => c.charCodeAt(0));
       const blob = new Blob([byteArray], { type: "application/pdf" });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");

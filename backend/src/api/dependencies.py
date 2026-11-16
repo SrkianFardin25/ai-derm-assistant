@@ -2,10 +2,12 @@ from functools import lru_cache
 from src.core.config import get_settings
 from src.infrastructure.onnx_engine import ONNXInferenceEngine
 from src.infrastructure.supabase_client import SupabaseCloudClient
+from src.services.feedback_service import FeedbackService
+from src.services.geolocation_service import GeolocationService
 from src.services.groq_service import GroqService
 from src.services.history_service import HistoryService
 from src.services.inference_service import InferenceService
-from src.services.feedback_service import FeedbackService
+from src.services.report_service import ReportService
 
 
 @lru_cache()
@@ -39,14 +41,10 @@ def get_history_service() -> HistoryService:
 def get_feedback_service() -> FeedbackService:
     return FeedbackService()
 
-from src.services.report_service import ReportService
-
 
 @lru_cache()
 def get_report_service() -> ReportService:
     return ReportService()
-
-from src.services.geolocation_service import GeolocationService
 
 
 @lru_cache()

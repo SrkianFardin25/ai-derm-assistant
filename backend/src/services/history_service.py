@@ -3,6 +3,8 @@
 import threading
 import hashlib
 import os
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from src.core.config import get_settings
 from src.domain.models import PredictionResult, ScanRecord
@@ -123,10 +125,6 @@ class HistoryService:
         notes: Optional[str] = None
     ) -> Dict[str, str]:
         """Record a new longitudinal visit for a named lesion."""
-        import hashlib
-        import uuid
-        from datetime import datetime, timezone
-
         visit_id = str(uuid.uuid4())
         # Deterministic lesion_id: SHA-256 of normalized name (stable across restarts)
         normalized = lesion_name.lower().strip()
@@ -149,6 +147,12 @@ class HistoryService:
         
         with self._store_lock:
             previous = self._lesion_store.get(lesion_id, {}).get("visits", [])
+            if not previous:
+                # In-memory store is empty (e.g. after a restart). Seed from
+                # Supabase so change detection works on the first post-restart visit.
+                cloud = self.client.fetch_lesion_timeline(lesion_id)
+                if cloud:
+                    previous = cloud
             if previous:
                 prior = previous[0]
                 reasons = []
