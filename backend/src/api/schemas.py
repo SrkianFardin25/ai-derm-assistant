@@ -38,6 +38,13 @@ class PredictionResponse(BaseModel):
     clinical_summary: Optional[str] = None
 
 
+class PatientMetadata(BaseModel):
+    age: Optional[int] = Field(None, ge=1, le=120, description="Patient age in years (1-120)")
+    sex: Optional[str] = Field(None, description="Patient biological sex ('male', 'female', 'other')")
+    anatomical_site: Optional[str] = Field(None, max_length=64, description="Lesion anatomical site")
+    history_of_melanoma: Optional[bool] = Field(None, description="Personal or familial history of melanoma")
+
+
 class ClinicalSummaryRequest(BaseModel):
     top_class: str
     top_name: str
@@ -45,6 +52,10 @@ class ClinicalSummaryRequest(BaseModel):
     calibrated_confidence: float
     temperature: float = 1.0
     uncertainty_score: float = 0.0
+    age: Optional[int] = Field(None, ge=1, le=120, description="Optional patient age in years")
+    sex: Optional[str] = Field(None, description="Optional patient biological sex ('male', 'female', 'other')")
+    anatomical_site: Optional[str] = Field(None, max_length=64, description="Optional lesion anatomical site")
+    history_of_melanoma: Optional[bool] = Field(None, description="Optional personal or familial history of melanoma")
 
 
 class ClinicalSummaryResponse(BaseModel):

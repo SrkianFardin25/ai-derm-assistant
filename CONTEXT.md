@@ -157,3 +157,8 @@ Every task follows a strict 4-step atomic verification cycle:
 - Daily Backup System: Created `scripts/backup_supabase.py` with 30-day retention pruning and `.github/workflows/daily_backup.yml` running every midnight UTC (`0 0 * * *`).
 - Upload Security: Added magic byte verification and 15MB file cap with Pillow decompression bomb protection (`MAX_IMAGE_PIXELS <= 25,000,000`). Sanitized API error outputs.
 - Verification: `python scripts/security_audit.py` passed 35/35 checks (exit code 0); `pytest backend/tests/ -v` passed 31/31 tests (exit code 0); `cd frontend && npm run build` passed (exit code 0).
+
+## 2026-11-16 Tier 1 Clinical & Quality Improvements
+- Feature 1 (Skin Detection in Monitoring Mode): Implemented multi-phototype (Fitzpatrick I-VI) YCrCb + HSV skin chromophore detection in `quality_service.py`. Records `skin_detected` and `skin_fraction` in quality telemetry without altering image acceptance decisions (zero false rejections).
+- Feature 2 (Patient Metadata Integration): Added optional clinical context fields (`age`, `sex`, `anatomical_site`, `history_of_melanoma`) in `/predict`, request schemas, and frontend `ScanScreen.jsx` collapsible accordion. Formatted into Groq prompt under segregated `Patient-Reported Context` with explicit rule forbidding model risk/prediction overrides. Missing metadata preserves baseline behavior with zero PII logging or persistence.
+- Verification: Added `test_skin_detection.py` (5 tests) and `test_patient_metadata.py` (4 tests); full test suite passed 40/40 tests (exit code 0); frontend lint passed with 0 errors; production build succeeded in 1.13s (exit code 0).

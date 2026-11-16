@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Camera, Sun, Activity, AlertTriangle, ShieldCheck, HelpCircle } from "lucide-react";
+import { Sun, Activity, AlertTriangle, ShieldCheck, HelpCircle, User, ChevronDown, ChevronUp } from "lucide-react";
 import { SoftAurora } from "@/components/ui/soft-aurora";
 import TechText from "@/components/ui/TechText";
 import { Stepper } from "@/components/ui/stepper";
@@ -48,6 +48,11 @@ export default function ScanScreen({ onAnalysisComplete, addToast }) {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showMetadata, setShowMetadata] = useState(false);
+  const [patientAge, setPatientAge] = useState("");
+  const [patientSex, setPatientSex] = useState("");
+  const [anatomicalSite, setAnatomicalSite] = useState("");
+  const [historyOfMelanoma, setHistoryOfMelanoma] = useState(false);
 
   const handleFilesChange = (files) => {
     setSelectedFiles(files);
@@ -77,6 +82,20 @@ export default function ScanScreen({ onAnalysisComplete, addToast }) {
     const formData = new FormData();
     formData.append("file", uploadFile);
     formData.append("save_to_cloud", "true");
+
+    // Optional patient metadata (forwarded to Groq LPU clinical narrative)
+    if (patientAge && !isNaN(patientAge)) {
+      formData.append("age", parseInt(patientAge, 10));
+    }
+    if (patientSex) {
+      formData.append("sex", patientSex);
+    }
+    if (anatomicalSite.trim()) {
+      formData.append("anatomical_site", anatomicalSite.trim());
+    }
+    if (historyOfMelanoma) {
+      formData.append("history_of_melanoma", "true");
+    }
 
     try {
       const response = await fetch(`${API_BASE_URL}/predict`, {
@@ -172,8 +191,80 @@ export default function ScanScreen({ onAnalysisComplete, addToast }) {
                 <span className="text-xs text-slate-500">Image ready for analysis</span>
               </div>
             )}
-
           </div>
+        </div>
+
+        {/* Optional Patient Context & Clinical Metadata */}
+        <div className="bg-white/90 backdrop-blur-xs rounded-2xl p-4 sm:p-5 border border-emerald-500/20 shadow-xs">
+          <button
+            type="button"
+            onClick={() => setShowMetadata(!showMetadata)}
+            className="w-full flex items-center justify-between text-left text-xs sm:text-sm font-semibold text-emerald-900 hover:text-emerald-700 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <User className="w-4 h-4 text-emerald-600" />
+              <span>Clinical Context & Patient Metadata (Optional)</span>
+              <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                Enhances LLM Chart Note
+              </span>
+            </div>
+            {showMetadata ? <ChevronUp className="w-4 h-4 text-emerald-700" /> : <ChevronDown className="w-4 h-4 text-emerald-700" />}
+          </button>
+
+          {showMetadata && (
+            <div className="mt-4 pt-4 border-t border-emerald-100 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Patient Age</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="120"
+                  placeholder="e.g. 48"
+                  value={patientAge}
+                  onChange={(e) => setPatientAge(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-hidden focus:border-emerald-500 text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Biological Sex</label>
+                <select
+                  value={patientSex}
+                  onChange={(e) => setPatientSex(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-hidden focus:border-emerald-500 text-slate-800"
+                >
+                  <option value="">Not specified</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Anatomical Location</label>
+                <input
+                  type="text"
+                  maxLength={64}
+                  placeholder="e.g. Upper Back, Forearm, Nose"
+                  value={anatomicalSite}
+                  onChange={(e) => setAnatomicalSite(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-hidden focus:border-emerald-500 text-slate-800"
+                />
+              </div>
+
+              <div className="flex items-center sm:items-end pb-2">
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700 select-none">
+                  <input
+                    type="checkbox"
+                    checked={historyOfMelanoma}
+                    onChange={(e) => setHistoryOfMelanoma(e.target.checked)}
+                    className="w-4 h-4 text-emerald-600 rounded-sm border-slate-300 focus:ring-emerald-500"
+                  />
+                  <span className="font-medium">Personal or family history of melanoma</span>
+                </label>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 3. Stateful Analyze Button (Aceternity) */}

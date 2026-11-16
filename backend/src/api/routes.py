@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 from PIL import Image, ImageOps
 
 from starlette.concurrency import run_in_threadpool
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 
 from src.api.dependencies import (
     get_geolocation_service,
@@ -111,6 +111,10 @@ async def predict_lesion(
     file: UploadFile = File(..., description="Dermatoscopic skin lesion image file (JPEG/PNG)"),
     generate_summary: bool = Query(True, description="Whether to generate Groq LPU clinical advice"),
     save_to_cloud: bool = Query(True, description="Persist image and prediction to Supabase Cloud"),
+    age: Optional[int] = Form(None, ge=1, le=120, description="Optional patient age (1-120)"),
+    sex: Optional[str] = Form(None, description="Optional patient biological sex ('male', 'female', 'other')"),
+    anatomical_site: Optional[str] = Form(None, max_length=64, description="Optional lesion anatomical location"),
+    history_of_melanoma: Optional[bool] = Form(None, description="Optional personal or familial history of melanoma"),
     inference_service: InferenceService = Depends(get_inference_service),
     groq_service: GroqService = Depends(get_groq_service),
     history_service: HistoryService = Depends(get_history_service),
@@ -189,12 +193,31 @@ async def predict_lesion(
     probs_by_code = {p.code: float(p.probability) for p in prediction.probabilities}
     all_probs = [probs_by_code.get(c, 0.0) for c in CLASS_NAMES]
 
+    # Validate and structure optional patient metadata (PII-safe, unlogged)
+    patient_meta: Dict[str, Any] = {}
+    if age is not None and 1 <= age <= 120:
+        patient_meta["age"] = age
+    if sex:
+        norm_sex = sex.strip().lower()
+        if norm_sex in ("male", "female", "other"):
+            patient_meta["sex"] = norm_sex
+    if anatomical_site:
+        clean_site = anatomical_site.strip()
+        if clean_site:
+            patient_meta["anatomical_site"] = clean_site[:64]
+    if history_of_melanoma is not None:
+        patient_meta["history_of_melanoma"] = bool(history_of_melanoma)
+
     # 2. Generate Groq clinical advisory summary
     clinical_summary = None
     if generate_summary:
         if prediction.is_actionable:
             try:
-                clinical_summary = await run_in_threadpool(groq_service.generate_clinical_summary, prediction)
+                clinical_summary = await run_in_threadpool(
+                    groq_service.generate_clinical_summary,
+                    prediction,
+                    patient_metadata=patient_meta if patient_meta else None,
+                )
                 prediction.clinical_summary = clinical_summary
             except Exception:
                 clinical_summary = None
@@ -249,7 +272,13 @@ async def predict_lesion(
         abstention_reason=prediction.abstention_reason,
         routing_zone=prediction.routing_zone,
         scan_id=saved_record.id if saved_record else None,
-        quality={"acceptable": quality.acceptable, "sharpness": quality.sharpness, "contrast": quality.contrast},
+        quality={
+            "acceptable": quality.acceptable,
+            "sharpness": quality.sharpness,
+            "contrast": quality.contrast,
+            "skin_detected": quality.skin_detected,
+            "skin_fraction": quality.skin_fraction,
+        },
         # Backward-compatible v1.0 Fields
         top_class=prediction.top_class,
         top_name=prediction.top_name,
@@ -399,5 +428,23 @@ async def generate_summary_endpoint(
         probabilities=[],
     )
 
-    summary_text = await run_in_threadpool(groq_service.generate_clinical_summary, dummy_pred)
+    patient_meta: Dict[str, Any] = {}
+    if payload.age is not None and 1 <= payload.age <= 120:
+        patient_meta["age"] = payload.age
+    if payload.sex:
+        norm_sex = payload.sex.strip().lower()
+        if norm_sex in ("male", "female", "other"):
+            patient_meta["sex"] = norm_sex
+    if payload.anatomical_site:
+        clean_site = payload.anatomical_site.strip()
+        if clean_site:
+            patient_meta["anatomical_site"] = clean_site[:64]
+    if payload.history_of_melanoma is not None:
+        patient_meta["history_of_melanoma"] = bool(payload.history_of_melanoma)
+
+    summary_text = await run_in_threadpool(
+        groq_service.generate_clinical_summary,
+        dummy_pred,
+        patient_metadata=patient_meta if patient_meta else None,
+    )
     return ClinicalSummaryResponse(clinical_summary=summary_text, model=groq_service.model)
